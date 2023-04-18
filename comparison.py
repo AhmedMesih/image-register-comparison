@@ -1,9 +1,10 @@
 import cv2
 import numpy as np
+import SimpleITK as sitk
 from tkinter import *
+from tkinter import ttk
 from tkinter import filedialog
 from PIL import Image, ImageTk
-#from skimage.metrics import structural_similarity as compare_ssim
 
 global merged_image
 global registered_second_image
@@ -39,7 +40,10 @@ def open_second_image():
     second_image = cv2.cvtColor(second_image, cv2.COLOR_BGR2RGB)
     display_image(second_image, image_canvas2)
     if first_image is not None:
-        registered_second_image = register_images(second_image, first_image)  # Swap the order of input images
+        if registration_method_var.get() == "SIFT":
+            registered_second_image = register_images_sift(second_image, first_image)
+        else:
+            registered_second_image = register_images_simpleitk(first_image, second_image)
         display_image(registered_second_image, image_canvas4)
     update_comparison()
     merged_image = merge_images(first_image, registered_second_image)
@@ -74,9 +78,9 @@ def compute_difference_image(img1, img2, threshold_value):
     return diff_thresholded_color
 
 def compare_images():
-    update_comparison()  # Replace the whole content with this line
+    update_comparison() 
 
-def register_images(img1, img2):
+def register_images_sift(img1, img2):
     sift = cv2.SIFT_create()
     keypoints1, descriptors1 = sift.detectAndCompute(img1, None)
     keypoints2, descriptors2 = sift.detectAndCompute(img2, None)
@@ -99,6 +103,105 @@ def register_images(img1, img2):
 
     return registered_image
 
+
+#def register_images_simpleitk(img1, img2):
+#    img1_sitk = sitk.GetImageFromArray(cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY))
+#    img2_sitk = sitk.GetImageFromArray(cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY))
+#
+#    registration_method = sitk.ImageRegistrationMethod()
+#
+#    registration_method.SetMetricAsMeanSquares()
+#    registration_method.SetOptimizerAsGradientDescent(learningRate=1.0, numberOfIterations=100, convergenceMinimumValue=1e-6, convergenceWindowSize=10)
+#    registration_method.SetOptimizerScalesFromPhysicalShift()
+#
+#    final_transform = sitk.Euler2DTransform()
+#    registration_method.SetInitialTransform(final_transform)
+#
+#    registration_method.SetInterpolator(sitk.sitkLinear)
+#
+#    registration_method.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
+#    registration_method.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
+#    registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+#
+#    final_transform = registration_method.Execute(sitk.Cast(img1_sitk, sitk.sitkFloat32), sitk.Cast(img2_sitk, sitk.sitkFloat32))
+#
+#    resampler = sitk.ResampleImageFilter()
+#    resampler.SetReferenceImage(img1_sitk)
+#    resampler.SetInterpolator(sitk.sitkLinear)
+#    resampler.SetTransform(final_transform)
+#
+#    registered_img2_sitk = resampler.Execute(img2_sitk)
+#    registered_img2 = cv2.cvtColor(sitk.GetArrayFromImage(registered_img2_sitk), cv2.COLOR_GRAY2RGB)
+#
+#    return registered_img2
+
+def register_images_simpleitk(img1, img2, transform_type="affine"):
+   
+    if transform_type == "affine":
+        img1_sitk = sitk.GetImageFromArray(cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY))
+        img2_sitk = sitk.GetImageFromArray(cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY))
+    
+        registration_method = sitk.ImageRegistrationMethod()
+    
+        registration_method.SetMetricAsMeanSquares()
+        registration_method.SetOptimizerAsGradientDescent(learningRate=1.0, numberOfIterations=100, convergenceMinimumValue=1e-6, convergenceWindowSize=10)
+        registration_method.SetOptimizerScalesFromPhysicalShift()
+    
+        final_transform = sitk.AffineTransform(2)
+        registration_method.SetInitialTransform(final_transform, inPlace=False)
+    
+        registration_method.SetInterpolator(sitk.sitkLinear)
+    
+        registration_method.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
+        registration_method.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
+        registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+    
+        final_transform = registration_method.Execute(sitk.Cast(img1_sitk, sitk.sitkFloat32), sitk.Cast(img2_sitk, sitk.sitkFloat32))
+    
+        resampler = sitk.ResampleImageFilter()
+        resampler.SetReferenceImage(img1_sitk)
+        resampler.SetInterpolator(sitk.sitkLinear)
+        resampler.SetTransform(final_transform)
+    
+        registered_img2_sitk = resampler.Execute(img2_sitk)
+        registered_img2 = cv2.cvtColor(sitk.GetArrayFromImage(registered_img2_sitk), cv2.COLOR_GRAY2RGB)
+    
+        return registered_img2
+    else:  # transform_type == "bspline"        
+        img1_sitk = sitk.GetImageFromArray(cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY))
+        img2_sitk = sitk.GetImageFromArray(cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY))
+
+        registration_method = sitk.ImageRegistrationMethod()
+
+        registration_method.SetMetricAsMeanSquares()
+        registration_method.SetOptimizerAsGradientDescent(learningRate=1.0, numberOfIterations=100, convergenceMinimumValue=1e-6, convergenceWindowSize=10)
+        registration_method.SetOptimizerScalesFromPhysicalShift()
+
+        grid_physical_spacing = [50.0, 50.0]
+        transform_domain_mesh_size = [4, 4]
+
+        initial_transform = sitk.BSplineTransformInitializer(img1_sitk, transform_domain_mesh_size, order=3)
+        registration_method.SetInitialTransform(initial_transform, inPlace=False)
+
+        registration_method.SetInterpolator(sitk.sitkLinear)
+
+        registration_method.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
+        registration_method.SetSmoothingSigmasPerLevel(smoothingSigmas=[2, 1, 0])
+        registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+
+        final_transform = registration_method.Execute(sitk.Cast(img1_sitk, sitk.sitkFloat32), sitk.Cast(img2_sitk, sitk.sitkFloat32))
+
+        resampler = sitk.ResampleImageFilter()
+        resampler.SetReferenceImage(img1_sitk)
+        resampler.SetInterpolator(sitk.sitkLinear)
+        resampler.SetTransform(final_transform)
+
+        registered_img2_sitk = resampler.Execute(img2_sitk)
+        registered_img2 = cv2.cvtColor(sitk.GetArrayFromImage(registered_img2_sitk), cv2.COLOR_GRAY2RGB)
+
+        return registered_img2
+
+
 def merge_images(img1, img2):
     img2_resized = cv2.resize(img2, (img1.shape[1], img1.shape[0]), interpolation=cv2.INTER_LINEAR)
     
@@ -117,6 +220,20 @@ def merge_images(img1, img2):
     
     return merged_image
 
+def register_images_wrapper(event=None):
+    global registered_second_image
+    if first_image is not None and second_image is not None:
+        method = registration_method_var.get()
+        if method == "SIFT":
+            registered_second_image = register_images_sift(second_image, first_image)
+        elif method == "Affine":
+            registered_second_image = register_images_simpleitk(first_image, second_image, "affine")
+        else:  # method == "B-spline"
+            registered_second_image = register_images_simpleitk(first_image, second_image, "bspline")
+        display_image(registered_second_image, image_canvas4)
+        update_comparison()
+        merged_image = merge_images(first_image, registered_second_image)
+        display_image(merged_image, image_canvas5)
 
 
 root = Tk()
@@ -130,6 +247,13 @@ root.columnconfigure(1, weight=1)
 root.rowconfigure(0, weight=1)
 root.rowconfigure(1, weight=1)
 root.rowconfigure(2, weight=1)
+
+Label(root, text="Registration Method").grid(row=0, column=2, pady=5, padx=5, sticky="w")
+registration_method_var = StringVar()
+registration_method_var.set("SIFT")
+registration_method_menu = ttk.Combobox(root, textvariable=registration_method_var, values=["SIFT", "Affine", "B-spline"], state='readonly', width=10)
+registration_method_menu.grid(row=0, column=2, pady=5, padx=5, sticky="e")
+registration_method_menu.bind("<<ComboboxSelected>>", register_images_wrapper)
 
 Label(root, text="First Image").grid(row=0, column=0, pady=5, padx=5, sticky="w")
 Label(root, text="Second Image").grid(row=0, column=1, pady=5, padx=5, sticky="w")
