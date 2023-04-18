@@ -3,7 +3,7 @@ import numpy as np
 from tkinter import *
 from tkinter import filedialog
 from PIL import Image, ImageTk
-from skimage.metrics import structural_similarity as compare_ssim
+#from skimage.metrics import structural_similarity as compare_ssim
 
 global merged_image
 global registered_second_image
